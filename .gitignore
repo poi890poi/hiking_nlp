@@ -1,1 +1,5 @@
 /env/*
+.vscode/*
+__pycache__/*
+dataset/*.bz2
+crawl/*
