@@ -8,6 +8,7 @@ import json
 import time
 import random
 import traceback
+import shutil
 
 import requests
 
@@ -31,10 +32,40 @@ def download_file(url, description, folder, exinfo=None):
     result = hashlib.md5(url.encode())
     md5 = result.hexdigest()
     local_filename = '{}{}'.format(md5, ext)
-    directory = os.path.join('./keepon', folder, md5[:2], md5[2:4])
+
+    directory = os.path.join('./keepon', folder, md5[:2])
     os.makedirs(directory, exist_ok=True)
+
+    # Upgrade legacy data structure to reduce number of sub-directories
+    directory_legacy = os.path.join('./keepon', folder, md5[:2], md5[2:4])
+    if os.path.isdir(directory_legacy):
+        try:
+            directory_tmp = os.path.join('./keepon', folder, md5)
+            os.rename(directory_legacy, directory_tmp)
+            os.rename(directory_tmp, directory)
+        except:
+            pass
+        finally:
+            shutil.rmtree(directory_tmp)
+            shutil.rmtree(directory_legacy)
+        print('Legacy directory {} is renamed.'.format(directory_legacy))
+
+    meta_filename = '{}{}'.format(md5, '.json')
+    meta_filename = os.path.join(directory, meta_filename)
+
+    # Check if index file is out-dated
+    outdated = False
+    if folder == 'index':
+        try:
+            with open(meta_filename, 'r') as f:
+                meta = json.load(f)
+                if time.time() - meta['timestamp'] > 86400 * 7: # Index file is older than 7 days
+                    outdated = True
+        except FileNotFoundError:
+            pass
+
     local_filename = os.path.join(directory, local_filename)
-    if not os.path.isfile(local_filename):
+    if outdated or (not os.path.isfile(local_filename)):
         try:
             with requests.get(url) as r:
                 fetched_from_remote = True
@@ -51,8 +82,6 @@ def download_file(url, description, folder, exinfo=None):
 
     # Save meta info
     try:
-        meta_filename = '{}{}'.format(md5, '.json')
-        meta_filename = os.path.join(directory, meta_filename)
         force_update_meta = True
         if force_update_meta or not os.path.isfile(meta_filename):
             with open(meta_filename, 'w') as f:
